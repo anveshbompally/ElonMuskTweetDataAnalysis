@@ -1,0 +1,180 @@
+---
+title: "Elon Musk Tweet Data Analysis"
+output: word_document
+Author: Anvesh Bompally
+---
+
+```{r}
+#Elon Musk Twitter Data Analysis
+
+df = read.csv('2021.csv')
+
+library(readr)
+library(stringr)
+library(tidytext)
+library(dplyr)
+library(hcandersenr)
+library(tidyverse)
+library(tidytext)
+library(stopwords)
+library(janeaustenr)
+
+df = select(df, tweet, date)
+
+df$date = format(as.Date(df$date, format="%Y-%m-%d %H:%M:%S"),"%Y")
+
+names(df)[2] <- 'Year'
+
+df$cleaned_tweet = gsub("@\\w+", "", df$tweet)
+df$cleaned_tweet = gsub("&amp", "", df$cleaned_tweet)
+df$cleaned_tweet = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", df$cleaned_tweet)
+df$cleaned_tweet = gsub("[[:punct:]]", "", df$cleaned_tweet)
+df$cleaned_tweet = gsub("[[:digit:]]", "", df$cleaned_tweet)
+df$cleaned_tweet = gsub("http\\w+", "", df$cleaned_tweet)
+df$cleaned_tweet = gsub("[ \t]{2,}", "", df$cleaned_tweet)
+df$cleaned_tweet = gsub("^\\s+|\\s+$", "", df$cleaned_tweet) 
+df$cleaned_tweet = gsub("[^\x01-\x7F]", "", df$cleaned_tweet)
+
+
+s <- strsplit(df$cleaned_tweet, split = " ")
+new_df = data.frame(Year = rep(df$Year, sapply(s, length)), Word = unlist(s))
+
+new_df = new_df %>%
+  filter(!(Word %in% stopwords("en", source = "snowball")))
+
+new_df$Word <- tolower(new_df$Word)
+
+new_df = new_df %>%
+  filter(Year > 2016)
+
+new_df_plot = new_df %>%
+  
+  group_by(Year, Word) %>%
+  count(Word, sort = TRUE)
+
+totalcount <- new_df_plot %>% 
+  group_by(Year) %>% 
+  summarize(total = sum(n))  
+
+new_df_plot <- left_join(new_df_plot,totalcount)
+
+new_df_plot$Freq <- new_df_plot$n/new_df_plot$total
+
+
+
+#top 10 words (for each year) by the highest value of word frequency
+new_df_21 = new_df_plot %>%
+  filter(Year == 2021) %>%
+  arrange(desc(Freq)) %>%
+  head(10)
+new_df_21
+
+new_df_20 = new_df_plot %>%
+  filter(Year == 2020) %>%
+  arrange(desc(Freq)) %>%
+  head(10)
+new_df_20
+
+new_df_19 = new_df_plot %>%
+  filter(Year == 2019) %>%
+  arrange(desc(Freq)) %>%
+  head(10)
+new_df_19
+
+new_df_18 = new_df_plot %>%
+  filter(Year == 2018) %>%
+  arrange(desc(Freq)) %>%
+  head(10)
+new_df_18 
+
+new_df_17 = new_df_plot %>%
+  filter(Year == 2017) %>%
+  arrange(desc(Freq)) %>%
+  head(10)
+new_df_17
+
+#histogram of word frequencies for each year
+
+
+ggplot() + geom_col(data = new_df_17, aes(x = Word, y = Freq)) +xlab("Words") + ylab("Frequency") + ggtitle("2017")
+ggplot() + geom_col(data = new_df_18, aes(x = Word, y = Freq)) +xlab("Words") + ylab("Frequency") + ggtitle("2018")
+ggplot() + geom_col(data = new_df_19, aes(x = Word, y = Freq)) +xlab("Words") + ylab("Frequency") + ggtitle("2019")
+ggplot() + geom_col(data = new_df_20, aes(x = Word, y = Freq)) +xlab("Words") + ylab("Frequency") + ggtitle("2020")
+ggplot() + geom_col(data = new_df_21, aes(x = Word, y = Freq)) +xlab("Words") + ylab("Frequency") + ggtitle("2021")
+
+
+#Zipfs
+
+freqbyrank <- new_df_plot %>% 
+  group_by(Year) %>% 
+  mutate(rank = row_number(), 
+         `term frequency` = n/total) %>%
+  ungroup()
+
+freqbyrank %>% 
+  ggplot(aes(rank, `term frequency`, color = Year)) + 
+  geom_line(size = .5, alpha = 1, show.legend = FALSE) + 
+  scale_x_log10() +
+  scale_y_log10()
+
+lm(log10(`term frequency`) ~ log10(rank), data = freqbyrank)
+
+
+freqbyrank %>% 
+  ggplot(aes(rank, `term frequency`, color = Year)) + 
+  geom_abline(intercept = -0.62, slope = -1.1,       
+              color = "black", linetype = 2) +
+  geom_line(size = .5, alpha = 1, show.legend = TRUE) + 
+  scale_x_log10() +
+  scale_y_log10()
+
+#Bigrams network
+
+library(ggraph)
+generateBiGramGraph <- function(Year_given, filter_value){
+bigrams <- df %>%
+  unnest_tokens(bigram, cleaned_tweet, token = "ngrams", n = 2)
+
+bigrams<-na.omit(bigrams)
+bigrams_separated <- bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>%
+  filter(Year == Year_given)
+
+# new bigram counts:
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+bigram_graph <- bigram_counts %>%
+  filter(n > filter_value) %>%
+  graph_from_data_frame()
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1) + ggtitle(Year_given)
+}
+generateBiGramGraph(2017,2)
+generateBiGramGraph(2018,3)
+generateBiGramGraph(2019,3)
+generateBiGramGraph(2020,3)
+generateBiGramGraph(2021,1)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
